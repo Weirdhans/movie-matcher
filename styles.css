@@ -1,0 +1,446 @@
+/* ============================================
+   MOVIE MATCHER - CUSTOM STYLES
+   ============================================ */
+
+/* CSS Variables */
+:root {
+  --primary: #10b981;
+  --danger: #ef4444;
+  --background: #0f172a;
+  --surface: #1e293b;
+  --text: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --accent: #3b82f6;
+}
+
+/* Global Styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   MOVIE CARD STYLES
+   ============================================ */
+
+.movie-card {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  will-change: transform, opacity;
+}
+
+/* Swipe Animations */
+.swipe-left {
+  transform: translateX(-150%) rotate(-30deg);
+  opacity: 0;
+  transition: all 0.3s ease-out;
+}
+
+.swipe-right {
+  transform: translateX(150%) rotate(30deg);
+  opacity: 0;
+  transition: all 0.3s ease-out;
+}
+
+/* Dragging State */
+.movie-card.dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+/* Swipe Indicators (tijdens drag) */
+.movie-card[data-swipe-direction="left"]::before,
+.movie-card[data-swipe-direction="right"]::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 6rem;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.movie-card[data-swipe-direction="left"]::before {
+  content: '❌';
+  opacity: 0.7;
+}
+
+.movie-card[data-swipe-direction="right"]::before {
+  content: '❤️';
+  opacity: 0.7;
+}
+
+/* ============================================
+   LOADING ANIMATIONS
+   ============================================ */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Skeleton Loader */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 25%,
+    #2d3748 50%,
+    var(--surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================
+   BUTTON STYLES
+   ============================================ */
+
+button,
+.button {
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active,
+.button:active {
+  transform: scale(0.95);
+}
+
+button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Floating Action Buttons */
+.fab {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+              0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.fab:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4),
+              0 4px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+.fab:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   MODAL STYLES
+   ============================================ */
+
+/* Modal backdrop transition */
+[x-cloak] {
+  display: none !important;
+}
+
+/* Modal entrance animations */
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-enter {
+  animation: modalEnter 0.3s ease-out;
+}
+
+/* ============================================
+   TOAST NOTIFICATIONS
+   ============================================ */
+
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  max-width: 400px;
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast.success {
+  background: var(--primary);
+  color: white;
+}
+
+.toast.error {
+  background: var(--danger);
+  color: white;
+}
+
+.toast.info {
+  background: var(--accent);
+  color: white;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Line clamp for text truncation */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background: var(--primary);
+  color: white;
+}
+
+::-moz-selection {
+  background: var(--primary);
+  color: white;
+}
+
+/* ============================================
+   RESPONSIVE STYLES
+   ============================================ */
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  .movie-card {
+    touch-action: pan-y;
+  }
+
+  .toast {
+    bottom: 1rem;
+    right: 1rem;
+    left: 1rem;
+    max-width: none;
+  }
+}
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  .movie-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+/* Fade in */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* Pulse animation for new matches */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Bounce animation */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+.bounce {
+  animation: bounce 1s infinite;
+}
+
+/* ============================================
+   CONFETTI CANVAS
+   ============================================ */
+
+#confetti-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+
+  .bg-surface,
+  .bg-background {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  button,
+  .button {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Skip to main content link */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-to-content:focus {
+  top: 0;
+}

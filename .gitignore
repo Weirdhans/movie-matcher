@@ -1,0 +1,31 @@
+# MCP Configuration (bevat gevoelige access tokens)
+.mcp.json
+
+# Node modules (als je later npm gebruikt)
+node_modules/
+
+# Environment variabelen
+.env
+.env.local
+.env.*.local
+
+# IDE specifieke bestanden
+.vscode/
+.idea/
+.cursor/
+.claude/
+
+# OS specifieke bestanden
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Vercel
+.vercel
+
+# Tijdelijke SQL migratie bestanden (niet nodig in production)
+fix_*.sql
+add_movie_data_to_swipes.sql
+
+# Development bestanden
+nul

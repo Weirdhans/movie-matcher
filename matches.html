@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matches - Movie Matcher</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Matches App Script - BEFORE Alpine.js -->
+  <script type="module">
+    import { getSessionIdFromUrl, formatRelativeTime } from './utils.js';
+    import { initSupabase, getMatches, subscribeToMatches, getPartialMatches, getSessionStats, getSession } from './supabase.js';
+    import { getPosterUrl, fetchMovieTrailer } from './tmdb.js';
+
+    // Alpine.js Component
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('matchesApp', () => ({
+        sessionId: null,
+        sessionData: null,
+        matches: [],
+        partialMatches: [],
+        stats: null,
+        loading: true,
+        showTrailerModal: false,
+        trailerUrl: null,
+        realtimeChannel: null,
+        activeTab: 'full', // 'full' of 'partial'
+
+        async init() {
+          console.log('🎉 Matches App Initialized');
+
+          // Initialiseer Supabase
+          initSupabase();
+
+          // Haal session ID uit URL
+          this.sessionId = getSessionIdFromUrl();
+
+          if (!this.sessionId) {
+            console.warn('⚠️ Geen session ID gevonden in URL');
+            this.loading = false;
+            // Laat het "Geen Actieve Sessie" scherm zien
+            return;
+          }
+
+          // Laad sessie data
+          await this.loadSessionData();
+
+          // Laad matches
+          await this.loadMatches();
+
+          // V2: Laad partial matches en stats
+          await this.loadPartialMatches();
+          await this.loadStats();
+
+          // Subscribe op nieuwe matches
+          this.setupRealtimeSubscription();
+
+          this.loading = false;
+        },
+
+        async loadSessionData() {
+          const { data } = await getSession(this.sessionId);
+          this.sessionData = data;
+        },
+
+        async loadMatches() {
+          console.log('📥 Matches laden...');
+          const { data, error } = await getMatches(this.sessionId);
+
+          if (error) {
+            console.error('❌ Fout bij laden matches:', error);
+            return;
+          }
+
+          this.matches = data || [];
+          console.log(`✅ ${this.matches.length} matches geladen`);
+        },
+
+        async loadPartialMatches() {
+          console.log('📥 Partial matches laden...');
+          const { data, error } = await getPartialMatches(this.sessionId, 1);
+
+          if (error) {
+            console.error('❌ Fout bij laden partial matches:', error);
+            return;
+          }
+
+          // Verrijk data met TMDB info (movie_data wordt client-side toegevoegd)
+          this.partialMatches = data || [];
+          console.log(`✅ ${this.partialMatches.length} partial matches geladen`);
+        },
+
+        async loadStats() {
+          console.log('📊 Stats laden...');
+          const { data, error } = await getSessionStats(this.sessionId);
+
+          if (error) {
+            console.error('❌ Fout bij laden stats:', error);
+            return;
+          }
+
+          this.stats = data;
+          console.log('✅ Stats geladen:', this.stats);
+        },
+
+        setupRealtimeSubscription() {
+          console.log('👂 Subscribing op nieuwe matches...');
+
+          this.realtimeChannel = subscribeToMatches(this.sessionId, (newMatch) => {
+            console.log('🎉 Nieuwe match ontvangen!', newMatch);
+
+            // Voeg toe aan lijst (aan begin)
+            this.matches.unshift(newMatch);
+
+            // Smooth scroll naar top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        },
+
+        getPosterUrl(posterPath) {
+          return getPosterUrl(posterPath, 'w500');
+        },
+
+        formatDate(dateString) {
+          return formatRelativeTime(dateString);
+        },
+
+        async viewTrailer(movieId) {
+          console.log('🎬 Trailer ophalen voor film:', movieId);
+          this.showTrailerModal = true;
+          this.trailerUrl = null;
+
+          const trailerUrl = await fetchMovieTrailer(movieId);
+
+          if (trailerUrl) {
+            // Convert YouTube watch URL naar embed URL
+            const videoId = trailerUrl.split('v=')[1];
+            this.trailerUrl = `https://www.youtube.com/embed/${videoId}`;
+          } else {
+            console.warn('⚠️ Geen trailer gevonden');
+          }
+        },
+
+        closeTrailerModal() {
+          this.showTrailerModal = false;
+          this.trailerUrl = null;
+        },
+
+        destroy() {
+          // Cleanup realtime subscription
+          if (this.realtimeChannel) {
+            this.realtimeChannel.unsubscribe();
+          }
+        }
+      }));
+    });
+  </script>
+
+  <!-- Alpine.js LAST -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#10b981',
+            danger: '#ef4444',
+            background: '#0f172a',
+            surface: '#1e293b',
+            accent: '#3b82f6'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-background text-gray-100 min-h-screen">
+
+  <!-- Main App Container -->
+  <div id="app" x-data="matchesApp()">
+
+    <!-- Header -->
+    <header class="bg-surface shadow-lg">
+      <div class="container mx-auto px-4 py-4 flex items-center justify-between">
+        <!-- V2: Back button met session ID -->
+        <a :href="'index.html?session=' + sessionId" class="flex items-center space-x-2 hover:text-primary transition">
+          <span class="text-2xl">←</span>
+          <span class="font-semibold">Terug</span>
+        </a>
+
+        <div class="flex items-center space-x-2">
+          <span class="text-2xl">🎉</span>
+          <h1 class="text-xl font-bold">Matches</h1>
+        </div>
+
+        <div class="w-20"></div> <!-- Spacer for centering -->
+      </div>
+    </header>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="flex items-center justify-center min-h-[80vh]">
+      <div class="text-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+        <p class="mt-4 text-gray-400">Matches laden...</p>
+      </div>
+    </div>
+
+    <!-- No Session -->
+    <div x-show="!loading && !sessionId" class="container mx-auto px-4 py-8 max-w-2xl text-center">
+      <div class="bg-surface rounded-xl shadow-xl p-8">
+        <div class="text-6xl mb-4">😕</div>
+        <h2 class="text-2xl font-bold mb-4">Geen Actieve Sessie</h2>
+        <p class="text-gray-400 mb-6">Je hebt geen actieve sessie. Start een nieuwe sessie of join een bestaande.</p>
+        <a href="index.html" class="inline-block bg-primary hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition">
+          Ga naar Home
+        </a>
+      </div>
+    </div>
+
+    <!-- Matches List -->
+    <div x-show="!loading && sessionId" class="container mx-auto px-4 py-8 max-w-4xl">
+
+      <!-- V2: Statistieken Sectie -->
+      <div x-show="stats" class="bg-surface rounded-xl shadow-xl p-6 mb-8">
+        <h2 class="text-2xl font-bold mb-4 text-center">📊 Sessie Statistieken</h2>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-background rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-primary" x-text="stats?.full_matches || 0"></div>
+            <div class="text-sm text-gray-400 mt-1">Matches</div>
+          </div>
+
+          <div class="bg-background rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-accent" x-text="stats?.total_swipes || 0"></div>
+            <div class="text-sm text-gray-400 mt-1">Swipes</div>
+          </div>
+
+          <div class="bg-background rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-yellow-500" x-text="stats?.total_likes || 0"></div>
+            <div class="text-sm text-gray-400 mt-1">Likes</div>
+          </div>
+
+          <div class="bg-background rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-green-500" x-text="stats?.match_rate?.toFixed(1) + '%' || '0%'"></div>
+            <div class="text-sm text-gray-400 mt-1">Match Rate</div>
+          </div>
+        </div>
+
+        <div x-show="stats?.avg_match_rating > 0" class="mt-4 text-center">
+          <p class="text-sm text-gray-400">
+            Gemiddelde rating van matches: <span class="text-primary font-semibold">⭐ <span x-text="stats?.avg_match_rating?.toFixed(1)"></span>/10</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- V2: Tabs -->
+      <div class="mb-6">
+        <div class="flex space-x-2 border-b border-gray-700">
+          <button
+            @click="activeTab = 'full'"
+            :class="activeTab === 'full' ? 'border-b-2 border-primary text-primary' : 'text-gray-400'"
+            class="px-6 py-3 font-semibold transition">
+            Volledige Matches (<span x-text="matches.length"></span>)
+          </button>
+          <button
+            @click="activeTab = 'partial'"
+            :class="activeTab === 'partial' ? 'border-b-2 border-primary text-primary' : 'text-gray-400'"
+            class="px-6 py-3 font-semibold transition">
+            Gedeeltelijke Matches (<span x-text="partialMatches.length"></span>)
+          </button>
+        </div>
+
+        <!-- Tab beschrijving -->
+        <div class="mt-4 text-sm text-gray-400">
+          <p x-show="activeTab === 'full'">
+            Films die door <strong x-text="sessionData?.required_votes || 'iedereen'"></strong> <template x-if="sessionData?.required_votes > 1">personen</template><template x-if="sessionData?.required_votes === 1">persoon</template> zijn geliked
+          </p>
+          <p x-show="activeTab === 'partial'">
+            Films die door sommigen zijn geliked maar nog geen volledige match zijn
+          </p>
+        </div>
+      </div>
+
+      <!-- Full Matches Tab -->
+      <div x-show="activeTab === 'full'">
+        <!-- No Matches -->
+        <div x-show="matches.length === 0" class="text-center py-12">
+          <div class="text-6xl mb-4">🎬</div>
+          <p class="text-gray-400 mb-6">Als genoeg mensen een film liken, verschijnt deze hier</p>
+          <a :href="'index.html?session=' + sessionId" class="inline-block bg-accent hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition">
+            Verder Swipen
+          </a>
+        </div>
+
+      <!-- Matches Grid -->
+      <div x-show="matches.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <template x-for="match in matches" :key="match.id">
+          <div class="bg-surface rounded-xl shadow-xl overflow-hidden hover:shadow-2xl transition">
+
+            <!-- Poster -->
+            <div class="relative h-72">
+              <img
+                :src="getPosterUrl(match.movie_data?.poster_path)"
+                :alt="match.movie_data?.title"
+                class="w-full h-full object-cover">
+
+              <!-- Match Badge -->
+              <div class="absolute top-4 right-4 bg-primary text-white px-3 py-1 rounded-full text-sm font-bold">
+                ✓ Match
+              </div>
+            </div>
+
+            <!-- Info -->
+            <div class="p-6">
+              <h3 class="text-xl font-bold mb-2" x-text="match.movie_data?.title"></h3>
+
+              <div class="flex items-center space-x-4 text-sm text-gray-400 mb-3">
+                <span x-text="match.movie_data?.release_date ? match.movie_data.release_date.substring(0, 4) : 'Onbekend'"></span>
+                <span>⭐ <span x-text="match.movie_data?.vote_average ? match.movie_data.vote_average.toFixed(1) : 'N/A'"></span>/10</span>
+              </div>
+
+              <!-- Genres -->
+              <div class="flex flex-wrap gap-2 mb-4">
+                <template x-for="genre in match.movie_data?.genres || []" :key="genre.id">
+                  <span class="bg-background px-3 py-1 rounded-full text-xs" x-text="genre.name"></span>
+                </template>
+              </div>
+
+              <!-- Description -->
+              <p class="text-gray-400 text-sm mb-4 line-clamp-3" x-text="match.movie_data?.overview || 'Geen beschrijving beschikbaar'"></p>
+
+              <!-- Matched timestamp -->
+              <p class="text-xs text-gray-500 mb-4">
+                Gematched: <span x-text="formatDate(match.matched_at)"></span>
+              </p>
+
+              <!-- Links -->
+              <div class="flex space-x-3">
+                <a
+                  :href="'https://www.themoviedb.org/movie/' + match.movie_id"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex-1 bg-accent hover:bg-blue-600 text-white text-center py-2 rounded-lg transition text-sm font-semibold">
+                  🎬 TMDB
+                </a>
+
+                <button
+                  @click="viewTrailer(match.movie_id)"
+                  class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg transition text-sm font-semibold">
+                  ▶️ Trailer
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      </div>
+
+      <!-- V2: Partial Matches Tab -->
+      <div x-show="activeTab === 'partial'">
+        <!-- No Partial Matches -->
+        <div x-show="partialMatches.length === 0" class="text-center py-12">
+          <div class="text-6xl mb-4">👥</div>
+          <p class="text-gray-400 mb-6">Nog geen gedeeltelijke matches</p>
+          <p class="text-sm text-gray-500">Films die door sommigen zijn geliked maar nog geen volledige match verschijnen hier</p>
+        </div>
+
+        <!-- Partial Matches List -->
+        <div x-show="partialMatches.length > 0" class="space-y-4">
+          <template x-for="partial in partialMatches" :key="partial.movie_id">
+            <div class="bg-surface rounded-xl shadow-xl p-6">
+              <div class="flex items-start space-x-4">
+                <!-- Movie Poster -->
+                <div class="w-32 h-48 bg-background rounded-lg overflow-hidden flex-shrink-0">
+                  <img
+                    x-show="partial.movie_data?.poster_path"
+                    :src="getPosterUrl(partial.movie_data?.poster_path)"
+                    :alt="partial.movie_data?.title"
+                    class="w-full h-full object-cover">
+                  <div x-show="!partial.movie_data?.poster_path" class="w-full h-full flex items-center justify-center text-4xl">
+                    🎬
+                  </div>
+                </div>
+
+                <div class="flex-1">
+                  <div class="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 class="text-xl font-bold mb-1" x-text="partial.movie_data?.title || 'Film ID: ' + partial.movie_id"></h3>
+                      <div class="flex items-center space-x-3 text-sm text-gray-400">
+                        <span x-show="partial.movie_data?.release_date" x-text="partial.movie_data?.release_date?.substring(0, 4)"></span>
+                        <span x-show="partial.movie_data?.vote_average">⭐ <span x-text="partial.movie_data?.vote_average?.toFixed(1)"></span>/10</span>
+                      </div>
+                    </div>
+                    <div class="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm font-bold">
+                      <span x-text="partial.likes_count"></span>/<span x-text="sessionData?.required_votes"></span> likes
+                    </div>
+                  </div>
+
+                  <!-- Genres -->
+                  <div x-show="partial.movie_data?.genres?.length > 0" class="flex flex-wrap gap-2 mb-3">
+                    <template x-for="genre in partial.movie_data?.genres" :key="genre.id">
+                      <span class="bg-background px-2 py-1 rounded-full text-xs" x-text="genre.name"></span>
+                    </template>
+                  </div>
+
+                  <!-- Overview -->
+                  <p x-show="partial.movie_data?.overview" class="text-sm text-gray-400 mb-3 line-clamp-2" x-text="partial.movie_data?.overview"></p>
+
+                  <!-- Voters -->
+                  <div class="mb-3">
+                    <span class="text-sm text-gray-400">Geliked door:</span>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                      <template x-for="voter in partial.voters" :key="voter">
+                        <span class="bg-background px-3 py-1 rounded-full text-sm">
+                          👤 <span x-text="voter"></span>
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+
+                  <p class="text-sm text-gray-400 mb-4">
+                    Nog <strong x-text="sessionData?.required_votes - partial.likes_count"></strong> <template x-if="(sessionData?.required_votes - partial.likes_count) === 1">persoon</template><template x-if="(sessionData?.required_votes - partial.likes_count) > 1">personen</template> nodig voor match!
+                  </p>
+
+                  <!-- Actions -->
+                  <div class="flex space-x-3">
+                    <a
+                      :href="'https://www.themoviedb.org/movie/' + partial.movie_id"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="bg-accent hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition text-sm font-semibold">
+                      🎬 TMDB
+                    </a>
+                    <button
+                      @click="viewTrailer(partial.movie_id)"
+                      class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition text-sm font-semibold">
+                      ▶️ Trailer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Trailer Modal -->
+    <div
+      x-show="showTrailerModal"
+      x-transition
+      @click.self="closeTrailerModal()"
+      class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div class="relative w-full max-w-4xl">
+        <button
+          @click="closeTrailerModal()"
+          class="absolute -top-12 right-0 text-white text-4xl hover:text-primary transition">
+          ✕
+        </button>
+
+        <div class="aspect-video bg-surface rounded-lg overflow-hidden">
+          <iframe
+            x-show="trailerUrl"
+            :src="trailerUrl + '?autoplay=1'"
+            class="w-full h-full"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+          </iframe>
+
+          <div x-show="!trailerUrl" class="flex items-center justify-center h-full">
+            <p class="text-gray-400">Trailer niet beschikbaar</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movie Matcher - Tinder voor Films</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Hammer.js voor swipe gestures -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Canvas Confetti voor match animaties -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- App Scripts BEFORE Alpine.js -->
+  <script type="module" src="app.js"></script>
+
+  <!-- Alpine.js LAST -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#10b981',
+            danger: '#ef4444',
+            background: '#0f172a',
+            surface: '#1e293b',
+            accent: '#3b82f6'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-background text-gray-100 min-h-screen">
+
+  <!-- Main App Container -->
+  <div id="app" x-data="movieMatcherApp()">
+
+    <!-- Header -->
+    <header class="bg-surface shadow-lg">
+      <div class="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="text-2xl">🎬</span>
+          <h1 class="text-xl font-bold">Movie Matcher</h1>
+        </div>
+
+        <!-- Matches knop (alleen zichtbaar als er een actieve sessie is) -->
+        <div x-show="sessionId" class="flex items-center space-x-4">
+          <button @click="goToMatches()" class="flex items-center space-x-2 bg-accent hover:bg-blue-600 px-4 py-2 rounded-lg transition">
+            <span>🎉</span>
+            <span>Matches</span>
+            <span x-show="matchCount > 0" x-text="'(' + matchCount + ')'" class="bg-primary px-2 py-1 rounded-full text-xs"></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="flex items-center justify-center min-h-[80vh]">
+      <div class="text-center">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+        <p class="mt-4 text-gray-400">Laden...</p>
+      </div>
+    </div>
+
+    <!-- V2: Join Modal (naam invoer) -->
+    <div
+      x-show="showJoinModal"
+      x-transition
+      class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-surface rounded-xl shadow-2xl p-8 max-w-md mx-4 relative">
+        <!-- Close button -->
+        <button
+          @click="showJoinModal = false; window.location.href = 'index.html'"
+          class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
+          title="Sluiten">
+          ✕
+        </button>
+
+        <h2 class="text-3xl font-bold mb-4 text-center">👋 Welkom!</h2>
+        <p class="text-gray-400 text-center mb-6">Voer je naam in om mee te doen</p>
+
+        <div class="space-y-4">
+          <input
+            type="text"
+            x-model="joinName"
+            placeholder="Jouw naam"
+            @keyup.enter="submitJoin()"
+            class="w-full bg-background text-gray-100 px-4 py-3 rounded-lg border border-gray-700 focus:border-primary focus:outline-none"
+            autofocus>
+
+          <button
+            @click="submitJoin()"
+            :disabled="!joinName.trim()"
+            class="w-full bg-primary hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition">
+            🚀 Deelnemen
+          </button>
+
+          <button
+            @click="showJoinModal = false; window.location.href = 'index.html'"
+            class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg transition">
+            Annuleren
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Session Flow -->
+    <div x-show="!loading && !sessionId" class="container mx-auto px-4 py-8 max-w-2xl">
+      <div class="bg-surface rounded-xl shadow-xl p-8">
+        <h2 class="text-3xl font-bold mb-4 text-center">Welkom bij Movie Matcher!</h2>
+        <p class="text-gray-400 text-center mb-8">Swipe samen met je groep door films en vind de perfecte match</p>
+
+        <!-- Filter Form -->
+        <div class="space-y-6">
+          <!-- Streaming Providers -->
+          <div>
+            <label class="block text-lg font-semibold mb-3">Streaming Diensten</label>
+            <div class="grid grid-cols-2 gap-3">
+              <template x-for="provider in streamingProviders" :key="provider.id">
+                <label class="flex items-center space-x-3 bg-background p-3 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+                  <input type="checkbox" :value="provider.id" x-model="selectedProviders" class="w-5 h-5 text-primary">
+                  <span x-text="provider.name"></span>
+                </label>
+              </template>
+            </div>
+            <p x-show="selectedProviders.length === 0" class="text-danger text-sm mt-2">⚠️ Selecteer minimaal 1 streaming dienst</p>
+          </div>
+
+          <!-- Genres -->
+          <div>
+            <label class="block text-lg font-semibold mb-3">Genres</label>
+            <div class="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+              <template x-for="genre in genres" :key="genre.id">
+                <label class="flex items-center space-x-3 bg-background p-3 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+                  <input type="checkbox" :value="genre.id" x-model="selectedGenres" class="w-5 h-5 text-primary">
+                  <span x-text="genre.name"></span>
+                </label>
+              </template>
+            </div>
+            <p x-show="selectedGenres.length === 0" class="text-danger text-sm mt-2">⚠️ Selecteer minimaal 1 genre</p>
+          </div>
+
+          <!-- Max Certification -->
+          <div>
+            <label class="block text-lg font-semibold mb-3">Maximum Leeftijd</label>
+            <select x-model="selectedCertification" class="w-full bg-background text-gray-100 px-4 py-3 rounded-lg border border-gray-700 focus:border-primary focus:outline-none">
+              <template x-for="cert in certifications" :key="cert.value">
+                <option :value="cert.value" x-text="cert.label"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- V2: Required Votes -->
+          <div>
+            <label class="block text-lg font-semibold mb-3">Match Drempel</label>
+            <p class="text-sm text-gray-400 mb-2">Hoeveel personen moeten een film leuk vinden voor een match?</p>
+            <input type="number" x-model.number="requiredVotes" min="1" max="10" class="w-full bg-background text-gray-100 px-4 py-3 rounded-lg border border-gray-700 focus:border-primary focus:outline-none">
+            <p class="text-xs text-gray-500 mt-1">Bijv: Bij 2 stemmen = match als minimaal 2 personen de film leuk vinden</p>
+          </div>
+
+          <!-- Create Button -->
+          <button
+            @click="createSession()"
+            :disabled="selectedProviders.length === 0 || selectedGenres.length === 0"
+            class="w-full bg-primary hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-lg transition text-lg">
+            🚀 Sessie Aanmaken
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Swipe Interface (active session) -->
+    <div x-show="!loading && sessionId && !showShareLink" class="container mx-auto px-4 py-8">
+
+      <!-- No movies state -->
+      <div x-show="movies.length === 0 && !loadingMovies" class="text-center py-12">
+        <div class="text-6xl mb-4">😔</div>
+        <h3 class="text-2xl font-bold mb-2">Geen films gevonden</h3>
+        <p class="text-gray-400">Probeer andere filters te selecteren</p>
+      </div>
+
+      <!-- Movie Card -->
+      <div x-show="movies.length > 0" class="max-w-md mx-auto">
+
+        <!-- Progress -->
+        <div class="mb-4 text-center text-gray-400">
+          <span x-text="'Film ' + (currentMovieIndex + 1) + ' van ' + movies.length"></span>
+        </div>
+
+        <!-- Card Container -->
+        <div class="relative" style="height: 600px;">
+          <template x-for="(movie, index) in movies" :key="movie.id">
+            <div
+              x-show="index === currentMovieIndex"
+              class="movie-card absolute inset-0 bg-surface rounded-xl shadow-2xl overflow-hidden">
+
+              <!-- Poster -->
+              <div class="relative h-96">
+                <img
+                  :src="getPosterUrl(movie.poster_path)"
+                  :alt="movie.title"
+                  class="w-full h-full object-cover">
+
+                <!-- Gradient overlay -->
+                <div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
+              </div>
+
+              <!-- Info -->
+              <div class="p-6">
+                <h3 class="text-2xl font-bold mb-2" x-text="movie.title"></h3>
+
+                <div class="flex items-center space-x-4 text-sm text-gray-400 mb-3">
+                  <span x-text="movie.release_date ? movie.release_date.substring(0, 4) : 'Onbekend'"></span>
+                  <span>⭐ <span x-text="movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'"></span>/10</span>
+                </div>
+
+                <!-- Genres -->
+                <div class="flex flex-wrap gap-2 mb-3">
+                  <template x-for="genre in movie.genre_ids" :key="genre">
+                    <span class="bg-background px-3 py-1 rounded-full text-xs" x-text="getGenreName(genre)"></span>
+                  </template>
+                </div>
+
+                <!-- Description -->
+                <p class="text-gray-400 text-sm line-clamp-3" x-text="movie.overview || 'Geen beschrijving beschikbaar'"></p>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- V2: Action Buttons Row (Trailer, Info) -->
+        <div class="flex justify-center space-x-4 mt-6">
+          <button
+            @click="openTrailer()"
+            class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition flex items-center space-x-2">
+            <span>🎬</span>
+            <span>Trailer</span>
+          </button>
+
+          <button
+            @click="openFilmDetails()"
+            class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition flex items-center space-x-2">
+            <span>ℹ️</span>
+            <span>Details</span>
+          </button>
+        </div>
+
+        <!-- Swipe Buttons -->
+        <div class="flex justify-center items-center space-x-4 mt-8">
+          <!-- V2: Undo Button -->
+          <button
+            @click="handleUndo()"
+            :disabled="!canUndo"
+            class="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed text-white p-4 rounded-full shadow-lg transition">
+            <span class="text-xl">⏮️</span>
+          </button>
+
+          <button
+            @click="swipeLeft()"
+            class="bg-danger hover:bg-red-600 text-white p-6 rounded-full shadow-lg transition transform hover:scale-110">
+            <span class="text-3xl">❌</span>
+          </button>
+
+          <button
+            @click="swipeRight()"
+            class="bg-primary hover:bg-green-600 text-white p-6 rounded-full shadow-lg transition transform hover:scale-110">
+            <span class="text-3xl">❤️</span>
+          </button>
+        </div>
+
+        <!-- V2: Members Widget Toggle -->
+        <div class="text-center mt-6">
+          <button
+            @click="toggleMembersWidget()"
+            class="text-gray-400 hover:text-gray-200 transition">
+            <span x-show="!showMembersWidget">👥 Toon Leden (<span x-text="members.length"></span>)</span>
+            <span x-show="showMembersWidget">👥 Verberg Leden</span>
+          </button>
+        </div>
+
+        <!-- V2: Members Widget -->
+        <div x-show="showMembersWidget" x-transition class="mt-4 bg-surface rounded-lg p-4">
+          <h4 class="font-semibold mb-3 text-center">Groepsleden</h4>
+          <div class="space-y-2">
+            <template x-for="member in members" :key="member.user_id">
+              <div class="flex justify-between items-center bg-background px-3 py-2 rounded">
+                <span x-text="member.user_name"></span>
+                <div class="text-sm text-gray-400">
+                  <span x-text="member.swipe_count"></span> swipes
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Share Link Screen -->
+    <div x-show="!loading && showShareLink" class="container mx-auto px-4 py-8 max-w-2xl">
+      <div class="bg-surface rounded-xl shadow-xl p-8 text-center">
+        <h2 class="text-3xl font-bold mb-4">🎉 Sessie Aangemaakt!</h2>
+        <p class="text-gray-400 mb-6">Deel deze link met je groepsleden</p>
+
+        <!-- Share Link -->
+        <div class="bg-background p-4 rounded-lg mb-6 flex items-center justify-between">
+          <code class="text-sm text-primary flex-1 truncate" x-text="shareLink"></code>
+          <button
+            @click="copyShareLink()"
+            class="ml-4 bg-accent hover:bg-blue-600 px-4 py-2 rounded-lg transition">
+            📋 Kopiëren
+          </button>
+        </div>
+
+        <!-- Start Button -->
+        <button
+          @click="startSwiping()"
+          class="bg-primary hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg transition text-lg">
+          🚀 Begin met Swipen
+        </button>
+      </div>
+    </div>
+
+    <!-- Match Modal -->
+    <div
+      x-show="showMatchModal"
+      x-transition
+      class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-surface rounded-xl shadow-2xl p-8 max-w-md mx-4 text-center">
+        <h2 class="text-4xl font-bold mb-4">🎉 IT'S A MATCH! 🎉</h2>
+
+        <div x-show="matchedMovie" class="mb-6">
+          <img
+            :src="matchedMovie ? getPosterUrl(matchedMovie.movie_data?.poster_path) : ''"
+            class="w-48 h-72 object-cover rounded-lg mx-auto mb-4 shadow-lg">
+          <h3 class="text-2xl font-bold" x-text="matchedMovie?.movie_data?.title"></h3>
+        </div>
+
+        <div class="space-y-3">
+          <button
+            @click="goToMatches()"
+            class="block w-full bg-primary hover:bg-green-600 text-white font-bold py-3 rounded-lg transition">
+            Bekijk Alle Matches
+          </button>
+          <button
+            @click="closeMatchModal()"
+            class="block w-full bg-accent hover:bg-blue-600 text-white font-bold py-3 rounded-lg transition">
+            Verder Swipen
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- V2: Trailer Modal -->
+    <div
+      x-show="showTrailerModal"
+      x-transition
+      @click.self="closeTrailer()"
+      class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+      <div class="bg-surface rounded-xl shadow-2xl p-6 max-w-4xl w-full mx-4">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold">🎬 Trailer</h2>
+          <button @click="closeTrailer()" class="text-gray-400 hover:text-white text-2xl">✕</button>
+        </div>
+
+        <div class="aspect-video bg-background rounded-lg overflow-hidden">
+          <iframe
+            :src="trailerUrl"
+            class="w-full h-full"
+            frameborder="0"
+            allowfullscreen>
+          </iframe>
+        </div>
+
+        <p class="text-sm text-gray-400 mt-4 text-center">
+          Trailer wordt geopend via YouTube search
+        </p>
+      </div>
+    </div>
+
+    <!-- V2: Film Details Modal -->
+    <div
+      x-show="showFilmDetailsModal"
+      x-transition
+      @click.self="closeFilmDetails()"
+      class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 overflow-y-auto">
+      <div class="bg-surface rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4 my-8">
+        <div class="flex justify-between items-start mb-4">
+          <h2 class="text-2xl font-bold" x-text="filmDetails?.title"></h2>
+          <button @click="closeFilmDetails()" class="text-gray-400 hover:text-white text-2xl">✕</button>
+        </div>
+
+        <div x-show="filmDetails" class="space-y-4">
+          <!-- Poster -->
+          <img
+            :src="getPosterUrl(filmDetails?.poster_path)"
+            class="w-48 h-72 object-cover rounded-lg mx-auto shadow-lg">
+
+          <!-- Info Grid -->
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span class="text-gray-400">Release:</span>
+              <span class="ml-2" x-text="filmDetails?.release_date?.substring(0, 4)"></span>
+            </div>
+            <div>
+              <span class="text-gray-400">Rating:</span>
+              <span class="ml-2">⭐ <span x-text="filmDetails?.vote_average?.toFixed(1)"></span>/10</span>
+            </div>
+          </div>
+
+          <!-- Genres -->
+          <div>
+            <span class="text-gray-400 block mb-2">Genres:</span>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="genre in filmDetails?.genre_ids" :key="genre">
+                <span class="bg-background px-3 py-1 rounded-full text-xs" x-text="getGenreName(genre)"></span>
+              </template>
+            </div>
+          </div>
+
+          <!-- Overview -->
+          <div>
+            <span class="text-gray-400 block mb-2">Beschrijving:</span>
+            <p class="text-sm" x-text="filmDetails?.overview || 'Geen beschrijving beschikbaar'"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+
+</body>
+</html>
